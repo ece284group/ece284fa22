@@ -10,7 +10,6 @@ import torch.nn as nn
 import math
 from models.quant_layer import *
 
-
 def conv3x3(in_planes, out_planes, stride=1):
     " 3x3 convolution with padding "
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
@@ -24,7 +23,7 @@ def Quantconv3x3(in_planes, out_planes, stride=1):
 class BasicBlock(nn.Module):
     expansion=1
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None, float=False):
+    def __init__(self, inplanes, planes, stride=1, downsample=None, float=False, change=False):
         super(BasicBlock, self).__init__()
         if float:
             self.conv1 = conv3x3(inplanes, planes, stride)
@@ -32,27 +31,35 @@ class BasicBlock(nn.Module):
         else:
             self.conv1 = Quantconv3x3(inplanes, planes, stride)
             self.conv2 = Quantconv3x3(planes, planes)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.relu = nn.ReLU(inplace=True)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.downsample = downsample
-        self.stride = stride
+        if change == False:
+            
+            self.bn1 = nn.BatchNorm2d(planes)
+            self.relu = nn.ReLU(inplace=True)
+            self.bn2 = nn.BatchNorm2d(planes)
+            self.downsample = downsample
+            self.stride = stride
+        else:
+            self.bn1 = nn.BatchNorm2d(planes)
+            self.relu = nn.ReLU(inplace=True)
+            self.downsample = downsample
+            self.stride = stride
 
     def forward(self, x):
         residual = x
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu(out)
-
         out = self.conv2(out)
-        out = self.bn2(out)
-
+        try:
+            out = self.bn2(out)
+        except AttributeError:
+            pass
         if self.downsample is not None:
             residual = self.downsample(x)
 
         out += residual
         out = self.relu(out)
-
+        
         return out
 
 
@@ -98,11 +105,11 @@ class ResNet_Cifar(nn.Module):
 
     def __init__(self, block, layers, num_classes=10, float=False):
         super(ResNet_Cifar, self).__init__()
-        self.inplanes = 16
-        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(16)
+        self.inplanes = 8
+        self.conv1 = QuantConv2d(3, 8, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(8)
         self.relu = nn.ReLU(inplace=True)
-        self.layer1 = self._make_layer(block, 16, layers[0], float=float)
+        self.layer1 = self._make_layer(block, 8, layers[0], float=float, first_layer=True)
         self.layer2 = self._make_layer(block, 32, layers[1], stride=2, float=float)
         self.layer3 = self._make_layer(block, 64, layers[2], stride=2, float=float)
         self.avgpool = nn.AvgPool2d(8, stride=1)
@@ -116,7 +123,7 @@ class ResNet_Cifar(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
-    def _make_layer(self, block, planes, blocks, stride=1, float=False):
+    def _make_layer(self, block, planes, blocks, stride=1, float=False, first_layer=False):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
@@ -127,10 +134,17 @@ class ResNet_Cifar(nn.Module):
             )
 
         layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample, float=float))
+        if (first_layer):
+            layers.append(block(self.inplanes, planes, stride, downsample, float=float,change=True))
+        else:
+            layers.append(block(self.inplanes, planes, stride, downsample, float=float, change=False))
+            
         self.inplanes = planes * block.expansion
         for _ in range(1, blocks):
-            layers.append(block(self.inplanes, planes, float=float))
+            if (first_layer):
+                layers.append(block(self.inplanes, planes, float=float,change=True))
+            else:
+                layers.append(block(self.inplanes, planes, float=float, change=False))
 
         return nn.Sequential(*layers)
 
