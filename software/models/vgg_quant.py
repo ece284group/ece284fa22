@@ -10,6 +10,7 @@ cfg = {
     'VGG11': [64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
     'VGG13': [64, 64, 'M', 128, 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
     'VGG16_quant': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M'],
+    'VGG16_quant_proj': [64, 64, 'M', 128, 128, 'M', 256, 256,256,'M', 8, "C", 512, 'M', 512, 512, 512, 'M'],
     'VGG16': ['F', 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M'],
     'VGG19': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M'],
 }
@@ -38,6 +39,10 @@ class VGG_quant(nn.Module):
                            nn.BatchNorm2d(64),
                            nn.ReLU(inplace=True)]
                 in_channels = 64
+            elif x == 'C' : # this is changed layer 
+                layers += [QuantConv2d(8, 8, kernel_size=3, padding=1),
+                           nn.ReLU(inplace=True)]
+                in_channels = 8
             else:
                 layers += [QuantConv2d(in_channels, x, kernel_size=3, padding=1),
                            nn.BatchNorm2d(x),
@@ -50,7 +55,10 @@ class VGG_quant(nn.Module):
         for m in self.modules():
             if isinstance(m, QuantConv2d):
                 m.show_params()
-    
+                
+def VGG16_quant_proj(**kwargs):
+    model = VGG_quant(vgg_name = 'VGG16_quant_proj', **kwargs)
+    return model  
 
 def VGG16_quant(**kwargs):
     model = VGG_quant(vgg_name = 'VGG16_quant', **kwargs)
