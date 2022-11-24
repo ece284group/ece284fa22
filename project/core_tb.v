@@ -2,6 +2,8 @@
 // Please do not spread this code without permission 
 `timescale 1ns/1ps
 
+// for optimization - change size of SRAM for better memory efficiency 
+
 module core_tb;
 
 parameter bw = 4;
@@ -246,8 +248,8 @@ initial begin
 
 
   ////////// Accumulation /////////
-  acc_file = $fopen("acc_address.txt", "r");
-  out_file = $fopen("out.txt", "r");  /// out.txt file stores the address sequence to read out from psum memory for accumulation
+  acc_file = $fopen("acc_address.txt", "r"); /// pts to address in our mem (a_pmem)
+  out_file = $fopen("out.txt", "r");  /// straight ops? - out.txt file stores the address sequence to read out from psum memory for accumulation
                                       /// This can be generated manually or in
                                       /// pytorch automatically
 
@@ -257,8 +259,6 @@ initial begin
   out_scan_file = $fscanf(out_file,"%s", answer); 
 
   error = 0;
-
-
 
   $display("############ Verification Start during accumulation #############"); 
 
@@ -287,11 +287,11 @@ initial begin
 
     for (j=0; j<len_kij+1; j=j+1) begin 
 
-      #0.5 clk = 1'b0;   
+      #0.5 clk = 1'b0;   // clock not updating for below loop 
         if (j<len_kij) begin CEN_pmem = 0; WEN_pmem = 1; acc_scan_file = $fscanf(acc_file,"%11b", A_pmem); end
                        else  begin CEN_pmem = 1; WEN_pmem = 1; end
 
-        if (j>0)  acc = 1;  
+        if (j>0)  acc = 1;  // accumulate
       #0.5 clk = 1'b1;   
     end
 
