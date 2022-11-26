@@ -17,7 +17,7 @@ parameter len_nij = 36;
 reg clk = 0;
 reg reset = 1;
 
-wire [33:0] inst_q; 
+wire [35:0] inst_q; 
 
 reg [1:0]  inst_w_q = 0; 
 reg [bw*row-1:0] D_xmem_q = 0;
@@ -42,6 +42,9 @@ reg execute_q = 0;
 reg load_q = 0;
 reg acc_q = 0;
 reg acc = 0;
+reg sram_psum_q ; // 0 is OFIFO/ 1 is SFU 
+
+reg relu = 0; // need to figure out 
 
 reg [1:0]  inst_w; 
 reg [bw*row-1:0] D_xmem;
@@ -68,6 +71,8 @@ integer captured_data;
 integer t, i, j, k, kij;
 integer error;
 
+assign inst_q[35] = sram_psum_q ; 
+assign inst_q[34] = relu ; 
 assign inst_q[33] = acc_q;
 assign inst_q[32] = CEN_pmem_q;
 assign inst_q[31] = WEN_pmem_q;
@@ -76,8 +81,8 @@ assign inst_q[19]   = CEN_xmem_q;
 assign inst_q[18]   = WEN_xmem_q;
 assign inst_q[17:7] = A_xmem_q;
 assign inst_q[6]   = ofifo_rd_q;
-assign inst_q[5]   = ififo_wr_q;
-assign inst_q[4]   = ififo_rd_q;
+assign inst_q[5]   = ififo_wr_q; // ???
+assign inst_q[4]   = ififo_rd_q; // ???
 assign inst_q[3]   = l0_rd_q;
 assign inst_q[2]   = l0_wr_q;
 assign inst_q[1]   = execute_q; 
@@ -133,7 +138,7 @@ initial begin
   #0.5 clk = 1'b1;   
   /////////////////////////
 
-  /////// Activation data writing to memory ///////
+  /////// Activation data writing to memory /////// - #1a 
   for (t=0; t<len_nij; t=t+1) begin  
     #0.5 clk = 1'b0;  x_scan_file = $fscanf(x_file,"%32b", D_xmem); WEN_xmem = 0; CEN_xmem = 0; if (t>0) A_xmem = A_xmem + 1;
     #0.5 clk = 1'b1;   
@@ -185,7 +190,7 @@ initial begin
 
 
 
-    /////// Kernel data writing to memory ///////
+    /////// Kernel data writing to memory /////// #1b 
 
     A_xmem = 11'b10000000000;
 
@@ -200,14 +205,40 @@ initial begin
 
 
 
-    /////// Kernel data writing to L0 ///////
-    ...
+    /////// Kernel data writing to L0 /////// - #2 
+    A_xmem = 11'b10000000000; 
+    for (t = 0 ; t<col; t = t+1) begin 
+      #0.5 clk = 1'b0 ; 
+      
+      // Set SRAM to read mode, D_xmem has data
+      WEN_xmem = 1; 
+      CEN_xmem = 0;
+
+      l0_wr = 1 ; 
+      if (t>0) A_xmem = A_xmem + 1 ; 
+
+      #0.5 clk = 1'b1 ; 
+    end 
+
+    #0.5 clk = 1'b0;  WEN_xmem = 1;  CEN_xmem = 1; A_xmem = 0; l0_wr = 0; 
+    #0.5 clk = 1'b1; 
     /////////////////////////////////////
 
 
 
-    /////// Kernel loading to PEs ///////
-    ...
+    /////// Kernel loading to PEs /////// #2b
+    //...
+
+    for (t = 0 ; t<3*col; t = t+1) begin 
+      #0.5 clk = 1'b0 ; 
+      load_q = 1 ; // load? 
+      l0_rd = 1 ; 
+
+      #0.5 clk = 1'b1 ; 
+    end 
+
+    #0.5 clk = 1'b0;  l0_rd = 0; load_q = 0 ; 
+    #0.5 clk = 1'b1; 
     /////////////////////////////////////
   
 
@@ -225,14 +256,73 @@ initial begin
 
 
 
-    /////// Activation data writing to L0 ///////
-    ...
+    /////// Activation data writing to L0 /////// #3
+
+    A_xmem = 11'b00000000000; 
+    for (t = 0 ; t<len_nij; t = t+1) begin 
+      #0.5 clk = 1'b0 ; 
+      
+      // Set SRAM to read mode, D_xmem has data
+      WEN_xmem = 1; 
+      CEN_xmem = 0;
+
+      l0_wr = 1 ; 
+      if (t>0) A_xmem = A_xmem + 1 ; 
+
+      #0.5 clk = 1'b1 ; 
+    end 
+
+    #0.5 clk = 1'b0;  WEN_xmem = 1;  CEN_xmem = 1; A_xmem = 0; l0_wr = 0; 
+    #0.5 clk = 1'b1; 
+
     /////////////////////////////////////
 
 
 
-    /////// Execution ///////
-    ...
+    /////// Execution & OFIFO READ  /////// 4&5
+
+    // 1) load into PEs
+    // 2) execute
+    // 3) move psum ofifo
+    // 4) move ofifo to psum_sram
+    
+    A_pmem = 11'b00000000000; 
+    
+    for (t = 0 ; t<len_nij; t = t+1) begin 
+    
+      #0.5 clk = 1'b0 ; 
+      
+      // read from l0 and load into MAC
+      if (t < len_nij) begin 
+          l0_rd = 1 ; 
+          load = 1 ; 
+      end else begin 
+          l0_rd = 0 ; 
+          load = 0 ; 
+      end 
+
+      // execute 
+      execute = 1 ; 
+
+      // in corelet, mac-array always connects to OFIFO 
+      
+      //read from OFIFO and write to PSUM_SRAM 
+      if (ofifo_valid) begin 
+          ofifo_rd = 1 ; 
+
+          CEN_pmem = 0; 
+          WEN_pmem = 0; 
+          A_pmem = A_pmem+ 1 ; 
+      end 
+      
+      #0.5 clk = 1'b1 ; 
+
+    #0.5 clk = 1'b0;  WEN_pmem = 1;  CEN_pmem = 1; A_pmem = 0; l0_rd = 0; 
+    load = 0 ; execute = 0 ; ofifo_rd = 0 ; 
+    #0.5 clk = 1'b1; 
+    end 
+
+
     /////////////////////////////////////
 
 
@@ -240,7 +330,7 @@ initial begin
     //////// OFIFO READ ////////
     // Ideally, OFIFO should be read while execution, but we have enough ofifo
     // depth so we can fetch out after execution.
-    ...
+    //...
     /////////////////////////////////////
 
 

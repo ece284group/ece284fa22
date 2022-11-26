@@ -1,0 +1,16 @@
+fifo_depth64.v
+fifo_mux_2_1.v
+fifo_mux_8_1.v
+fifo_mux_16_1.v
+ofifo.v
+core.v 
+core_tb.v 
+corelet.v
+l0.v
+mac_array.v
+mac_row.v
+mac_tile.v
+sfp.v
+sram_32b_w2048.v
+mac.v 
+sram_128b.v
