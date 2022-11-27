@@ -17,7 +17,7 @@ parameter len_nij = 36;
 reg clk = 0;
 reg reset = 1;
 
-wire [33:0] inst_q; 
+wire [38:0] inst_q; 
 
 reg [1:0]  inst_w_q = 0; 
 reg [bw*row-1:0] D_xmem_q = 0;
@@ -29,10 +29,10 @@ reg WEN_xmem_q = 1;
 reg [10:0] A_xmem_q = 0;
 reg CEN_pmem = 1;
 reg WEN_pmem = 1;
-reg [10:0] A_pmem = 0;
+reg [13:0] A_pmem = 0;
 reg CEN_pmem_q = 1;
 reg WEN_pmem_q = 1;
-reg [10:0] A_pmem_q = 0;
+reg [13:0] A_pmem_q = 0;
 reg ofifo_rd_q = 0;
 reg ififo_wr_q = 0;
 reg ififo_rd_q = 0;
@@ -42,6 +42,9 @@ reg execute_q = 0;
 reg load_q = 0;
 reg acc_q = 0;
 reg acc = 0;
+reg sram_psum_q = 0; // 0 is OFIFO/ 1 is SFU 
+
+reg relu = 0; // need to figure out 
 
 reg [1:0]  inst_w; 
 reg [bw*row-1:0] D_xmem;
@@ -59,6 +62,7 @@ reg [8*30:1] stringvar;
 reg [8*30:1] w_file_name;
 wire ofifo_valid;
 wire [col*psum_bw-1:0] sfp_out;
+reg sram_psum = 0 ; 
 
 integer x_file, x_scan_file ; // file_handler
 integer w_file, w_scan_file ; // file_handler
@@ -68,27 +72,31 @@ integer captured_data;
 integer t, i, j, k, kij;
 integer error;
 
-assign inst_q[33] = acc_q;
-assign inst_q[32] = CEN_pmem_q;
-assign inst_q[31] = WEN_pmem_q;
-assign inst_q[30:20] = A_pmem_q;
+assign inst_q[38] = sram_psum_q ; 
+assign inst_q[37] = relu ; 
+assign inst_q[36] = acc_q;
+assign inst_q[35] = CEN_pmem_q;
+assign inst_q[34] = WEN_pmem_q;
+assign inst_q[33:20] = A_pmem_q;
 assign inst_q[19]   = CEN_xmem_q;
 assign inst_q[18]   = WEN_xmem_q;
 assign inst_q[17:7] = A_xmem_q;
 assign inst_q[6]   = ofifo_rd_q;
-assign inst_q[5]   = ififo_wr_q;
-assign inst_q[4]   = ififo_rd_q;
+assign inst_q[5]   = ififo_wr_q; // ???
+assign inst_q[4]   = ififo_rd_q; // ???
 assign inst_q[3]   = l0_rd_q;
 assign inst_q[2]   = l0_wr_q;
 assign inst_q[1]   = execute_q; 
 assign inst_q[0]   = load_q; 
 
+//wire [bw*row-1:0] D_x;
+//assign D_x = D_xmem_q;
 
 core  #(.bw(bw), .col(col), .row(row)) core_instance (
 	.clk(clk), 
 	.inst(inst_q),
 	.ofifo_valid(ofifo_valid),
-        .D_xmem(D_xmem_q), 
+        .D_xmem(D_xmem), 
         .sfp_out(sfp_out), 
 	.reset(reset)); 
 
@@ -111,7 +119,7 @@ initial begin
   $dumpfile("core_tb.vcd");
   $dumpvars(0,core_tb);
 
-  x_file = $fopen("activation_tile0.txt", "r");
+  x_file = $fopen("activation.txt", "r");
   // Following three lines are to remove the first three comment lines of the file
   x_scan_file = $fscanf(x_file,"%s", captured_data);
   x_scan_file = $fscanf(x_file,"%s", captured_data);
@@ -133,7 +141,7 @@ initial begin
   #0.5 clk = 1'b1;   
   /////////////////////////
 
-  /////// Activation data writing to memory ///////
+  /////// Activation data writing to memory /////// - #1a 
   for (t=0; t<len_nij; t=t+1) begin  
     #0.5 clk = 1'b0;  x_scan_file = $fscanf(x_file,"%32b", D_xmem); WEN_xmem = 0; CEN_xmem = 0; if (t>0) A_xmem = A_xmem + 1;
     #0.5 clk = 1'b1;   
@@ -145,6 +153,7 @@ initial begin
   $fclose(x_file);
   /////////////////////////////////////////////////
 
+  A_pmem = 11'b00000000000;  // dont want to reset A_pmen every loop. would overwrite data in psum 
 
   for (kij=0; kij<9; kij=kij+1) begin  // kij loop
 
@@ -185,7 +194,7 @@ initial begin
 
 
 
-    /////// Kernel data writing to memory ///////
+    /////// Kernel data writing to memory /////// #1b 
 
     A_xmem = 11'b10000000000;
 
@@ -200,14 +209,40 @@ initial begin
 
 
 
-    /////// Kernel data writing to L0 ///////
-    ...
+    /////// Kernel data writing to L0 /////// - #2 
+    A_xmem = 11'b10000000000; 
+    for (t = 0 ; t<col; t = t+1) begin 
+      #0.5 clk = 1'b0 ; 
+      
+      // Set SRAM to read mode, D_xmem has data
+      WEN_xmem = 1; 
+      CEN_xmem = 0;
+
+      l0_wr = 1 ; 
+      if (t>0) A_xmem = A_xmem + 1 ; 
+
+      #0.5 clk = 1'b1 ; 
+    end 
+
+    #0.5 clk = 1'b0;  WEN_xmem = 1;  CEN_xmem = 1; A_xmem = 0; l0_wr = 0; 
+    #0.5 clk = 1'b1; 
     /////////////////////////////////////
 
 
 
-    /////// Kernel loading to PEs ///////
-    ...
+    /////// Kernel loading to PEs /////// #2b
+    //...
+
+    for (t = 0 ; t<3*col; t = t+1) begin 
+      #0.5 clk = 1'b0 ; 
+      load_q = 1 ; // load? 
+      l0_rd = 1 ; 
+
+      #0.5 clk = 1'b1 ; 
+    end 
+
+    #0.5 clk = 1'b0;  l0_rd = 0; load_q = 0 ; 
+    #0.5 clk = 1'b1; 
     /////////////////////////////////////
   
 
@@ -225,14 +260,63 @@ initial begin
 
 
 
-    /////// Activation data writing to L0 ///////
-    ...
+    /////// Activation data writing to L0 /////// #3
+
+    A_xmem = 11'b00000000000; 
+    for (t = 0 ; t<len_nij; t = t+1) begin 
+      #0.5 clk = 1'b0 ; 
+      
+      // Set SRAM to read mode, D_xmem has data
+      WEN_xmem = 1; 
+      CEN_xmem = 0;
+
+      l0_wr = 1 ; 
+      if (t>0) A_xmem = A_xmem + 1 ; 
+
+      #0.5 clk = 1'b1 ; 
+    end 
+
+    #0.5 clk = 1'b0;  WEN_xmem = 1;  CEN_xmem = 1; A_xmem = 0; l0_wr = 0; 
+    #0.5 clk = 1'b1; 
+
     /////////////////////////////////////
 
 
 
-    /////// Execution ///////
-    ...
+    /////// Execution & OFIFO READ  /////// 4&5
+
+    // 1) load into PEs
+    // 2) execute
+    // 3) move psum ofifo
+    // 4) move ofifo to psum_sram
+    
+    
+    for (t = 0 ; t<len_onij+1; t = t+1) begin 
+    
+      #0.5 clk = 1'b0 ; 
+      
+      // read from l0 and load into MAC
+      if (t < len_nij) begin 
+          l0_rd = 1 ; 
+          load = 1 ; 
+      end else begin 
+          l0_rd = 0 ; 
+          load = 0 ; 
+      end 
+
+      // execute 
+      execute = 1 ; 
+
+      // in corelet, mac-array always writes to OFIFO if mac is valid
+      
+      #0.5 clk = 1'b1 ; 
+
+    #0.5 clk = 1'b0;  WEN_pmem = 1;  CEN_pmem = 1; A_pmem = 0; l0_rd = 0; 
+    load = 0 ; execute = 0 ; ofifo_rd = 0 ; 
+    #0.5 clk = 1'b1; 
+    end 
+
+
     /////////////////////////////////////
 
 
@@ -240,14 +324,33 @@ initial begin
     //////// OFIFO READ ////////
     // Ideally, OFIFO should be read while execution, but we have enough ofifo
     // depth so we can fetch out after execution.
-    ...
+    //...
+          //read from OFIFO and write to PSUM_SRAM 
+    for (t = 0 ; t<len_onij+1; t = t+1) begin 
+    
+      #0.5 clk = 1'b0 ; 
+      
+      if (ofifo_valid) begin 
+          ofifo_rd = 1 ; 
+
+          CEN_pmem = 0; 
+          WEN_pmem = 0; 
+          A_pmem = A_pmem+ 1 ; 
+      end 
+
+      #0.5 clk = 1'b1 ; 
+
+    #0.5 clk = 1'b0;  WEN_pmem = 1;  CEN_pmem = 1; A_pmem = 0; l0_rd = 0; 
+    load = 0 ; execute = 0 ; ofifo_rd = 0 ; 
+    #0.5 clk = 1'b1; 
+    end 
     /////////////////////////////////////
 
 
   end  // end of kij loop
 
 
-  ////////// Accumulation /////////
+  ////////// Accumulation ///////// # 6 
   acc_file = $fopen("acc_address.txt", "r"); /// pts to address in our mem (a_pmem)
   out_file = $fopen("out.txt", "r");  /// straight ops? - out.txt file stores the address sequence to read out from psum memory for accumulation
                                       /// This can be generated manually or in
@@ -261,13 +364,17 @@ initial begin
   error = 0;
 
   $display("############ Verification Start during accumulation #############"); 
+/* core_tb.v:358: error: sram_psum is not a valid l-value in core_tb.
+*/
 
+A_pmem = 11'b00000000000; 
+  sram_psum =1; // read from sfp not ofifo
   for (i=0; i<len_onij+1; i=i+1) begin 
 
     #0.5 clk = 1'b0; 
     #0.5 clk = 1'b1; 
 
-    if (i>0) begin
+    if (i>0) begin // check current sfpout to answer
      out_scan_file = $fscanf(out_file,"%128b", answer); // reading from out file to answer
        if (sfp_out == answer)
          $display("%2d-th output featuremap Data matched! :D", i); 
@@ -285,10 +392,10 @@ initial begin
     #0.5 clk = 1'b0; reset = 0; 
     #0.5 clk = 1'b1;  
 
-    for (j=0; j<len_kij+1; j=j+1) begin 
+    for (j=0; j<len_kij+1; j=j+1) begin  // Accumulate #6 
 
-      #0.5 clk = 1'b0;   // clock not updating for below loop 
-        if (j<len_kij) begin CEN_pmem = 0; WEN_pmem = 1; acc_scan_file = $fscanf(acc_file,"%11b", A_pmem); end
+      #0.5 clk = 1'b0;   
+        if (j<len_kij) begin CEN_pmem = 0; WEN_pmem = 1; acc_scan_file = $fscanf(acc_file,"%14b", A_pmem); end
                        else  begin CEN_pmem = 1; WEN_pmem = 1; end
 
         if (j>0)  acc = 1;  // accumulate
@@ -335,6 +442,7 @@ always @ (posedge clk) begin
    l0_wr_q    <= l0_wr ;
    execute_q  <= execute;
    load_q     <= load;
+   sram_psum_q <= sram_psum ; 
 end
 
 
