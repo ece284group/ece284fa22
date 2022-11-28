@@ -23,6 +23,8 @@ wire WEN_pmem_q;
 wire [13:0] A_pmem_q;
 
 wire [col*psum_bw-1:0] sram_out ; 
+wire [col*psum_bw-1:0] sram_p ; 
+reg [col*psum_bw-1:0] sram_p_q ; 
 
 wire [bw*row-1:0] Q_xmem ; 
 
@@ -37,7 +39,7 @@ assign	A_pmem_q   = inst[33:20];
 assign	CEN_sram = inst[19]; 
 assign	WEN_sram = inst[18]; 
 assign	A_sram   = inst[17:7]; 
-
+assign sram_p = sram_p_q ; 
 
 
 sram_32b_w2048  sram (
@@ -68,14 +70,14 @@ corelet  #(.bw(bw), .col(col), .row(row)) corelet_instance ( // has SFP, OFIFO, 
 	.sram_p(sram_out)) ; 
 
 
-always @ (posedge clk) begin
-/*	
-if () begin 
-	core_ip_q = D_xmem ; 
+always @ ( * ) begin
+	
+if (!((!CEN_pmem_q && WEN_pmem_q))) begin 
+	sram_p_q = 0 ; 
 end else begin 
-	core_ip_q = Q_xmem ; 
+	sram_p_q = sram_out ; 
 end 
-*/
+
 end 
 
 
