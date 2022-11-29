@@ -31,6 +31,7 @@ module l0 (clk, in, out, rd, wr, o_full, reset, o_ready);
   assign o_full  = !(full_t == 8'b00000000) ; // o_full is 1 if 1 of full_t is 1 ????
 
 
+  generate
   for (i=0; i<row ; i=i+1) begin : row_num
       fifo_depth64 #(.bw(bw)) fifo_instance (
 	 .rd_clk(clk),
@@ -44,6 +45,7 @@ module l0 (clk, in, out, rd, wr, o_full, reset, o_ready);
          .reset(reset));
   end
 
+  endgenerate
 
   always @ (posedge clk) begin
    if (reset) begin

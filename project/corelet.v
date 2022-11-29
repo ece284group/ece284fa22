@@ -47,7 +47,7 @@ sfp  sfp_instance(
     .in(sram_p),  // ????????
     .thres(thres), 
     .acc(inst[36]), //acc_q
-    .relu(relu), 
+    .relu(inst[37]), 
     .clk(clk), 
     .reset(reset));
 

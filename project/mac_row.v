@@ -23,6 +23,7 @@ module mac_row (clk, out_s, in_w, in_n, valid, inst_w, reset);
   //assign valid = temp_v ; 
   
   genvar i;
+  generate
   for (i=1; i < col+1 ; i=i+1) begin : col_num
       mac_tile #(.bw(bw), .psum_bw(psum_bw)) mac_tile_instance (
          .clk(clk),
@@ -36,7 +37,7 @@ module mac_row (clk, out_s, in_w, in_n, valid, inst_w, reset);
    
   assign valid[i-1]=temp_instw[2*i+1];
   end
- 
+  endgenerate
  
 
 endmodule
